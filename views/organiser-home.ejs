@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Organiser Home Page</title>
+    <link rel="stylesheet" href="/main.css">
+</head>
+<body>
+    <h1>Organiser Home Page</h1>
+    <h2><%= site.name %></h2>
+    <p><%= site.description %></p>
+    <a href="/organiser/settings">Site Settings</a>
+    <form action="/organiser/events/new" method="POST" style="display:inline;">
+        <button type="submit">Create New Event</button>
+    </form>
+    <h3>Published Events</h3>
+    <ul>
+        <% if (publishedEvents.length === 0) { %>
+            <li>No published events.</li>
+        <% } else { %>
+            <% publishedEvents.forEach(function(event) { %>
+                <li>
+                    <strong><%= event.title %></strong> - <%= event.event_date %>
+                    <!-- Add more event info and actions here -->
+                </li>
+            <% }); %>
+        <% } %>
+    </ul>
+    <h3>Draft Events</h3>
+    <ul>
+        <% if (draftEvents.length === 0) { %>
+            <li>No draft events.</li>
+        <% } else { %>
+            <% draftEvents.forEach(function(event) { %>
+                <li>
+                    <strong><%= event.title %></strong> - <%= event.event_date %>
+                    <!-- Add more event info and actions here -->
+                </li>
+            <% }); %>
+        <% } %>
+    </ul>
+</body>
+</html> 

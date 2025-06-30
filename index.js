@@ -1,8 +1,3 @@
-/**
-* index.js
-* This is your main app entry point
-*/
-
 // Set up express, bodyparser and EJS
 const express = require('express');
 const app = express();
@@ -27,12 +22,12 @@ global.db = new sqlite3.Database('./database.db',function(err){
 
 // Handle requests to the home page 
 app.get('/', (req, res) => {
-    res.send('Test')
+    res.render('home');
 });
 
-// Add all the route handlers in usersRoutes to the app under the path /users
-const usersRoutes = require('./routes/users');
-app.use('/users', usersRoutes);
+// Add all the route handlers in organiserRoutes to the app under the path /organiser
+const organiserRoutes = require('./routes/organiser');
+app.use('/organiser', organiserRoutes);
 
 
 // Make the web application listen for HTTP requests
