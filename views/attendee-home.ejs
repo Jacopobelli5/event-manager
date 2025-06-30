@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Events</title>
+    <link rel="stylesheet" href="/main.css">
+</head>
+<body>
+    <h1><%= site.name %></h1>
+    <p><%= site.description %></p>
+
+    <h2>Upcoming Events</h2>
+    <% if (events.length === 0) { %>
+        <p>No upcoming events. Please check back later!</p>
+    <% } else { %>
+        <ul>
+            <% events.forEach(function(event) { %>
+                <li>
+                    <a href="/attendee/event/<%= event.id %>">
+                        <strong><%= event.title %></strong> - <%= new Date(event.event_date).toLocaleDateString() %>
+                    </a>
+                </li>
+            <% }); %>
+        </ul>
+    <% } %>
+</body>
+</html> 

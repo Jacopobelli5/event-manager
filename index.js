@@ -29,6 +29,10 @@ app.get('/', (req, res) => {
 const organiserRoutes = require('./routes/organiser');
 app.use('/organiser', organiserRoutes);
 
+// Add all the route handlers in attendeeRoutes to the app under the path /attendee
+const attendeeRoutes = require('./routes/attendee');
+app.use('/attendee', attendeeRoutes);
+
 
 // Make the web application listen for HTTP requests
 app.listen(port, () => {
