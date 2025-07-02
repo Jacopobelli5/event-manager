@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= event.title %></title>
+    <link rel="stylesheet" href="/main.css">
+</head>
+<body>
+    <h1><%= event.title %></h1>
+    <p><strong>Date:</strong> <%= new Date(event.event_date).toLocaleString() %></p>
+    <p><%= event.description %></p>
+
+    <hr>
+
+    <h2>Book Tickets</h2>
+    <form action="/attendee/book/<%= event.id %>" method="POST">
+        <div>
+            <label for="attendee_name">Your Name:</label>
+            <input type="text" id="attendee_name" name="attendee_name" required>
+        </div>
+
+        <h3>Select Tickets:</h3>
+        <% if (ticketTypes.length === 0) { %>
+            <p>Sorry, no tickets are available for this event.</p>
+        <% } else { %>
+            <% ticketTypes.forEach(function(ticket) { %>
+                <div>
+                    <label for="ticket_<%= ticket.id %>">
+                        <%= ticket.type_name %> ($<%= ticket.ticket_price %>) - 
+                        (Available: <%= ticket.remaining %>)
+                    </label>
+                    <% if (ticket.remaining > 0) { %>
+                        <input type="number" name="tickets[<%= ticket.id %>]" id="ticket_<%= ticket.id %>" value="0" min="0" max="<%= ticket.remaining %>">
+                    <% } else { %>
+                        <span style="color:red;">Sold Out</span>
+                    <% } %>
+                </div>
+            <% }); %>
+            <button type="submit">Book Now</button>
+        <% } %>
+    </form>
+    
+    <hr>
+
+    <a href="/attendee">Back to All Events</a>
+</body>
+</html> 

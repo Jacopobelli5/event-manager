@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Site Settings</title>
+    <link rel="stylesheet" href="/main.css">
+</head>
+<body>
+    <h1>Site Settings</h1>
+    <form action="/organiser/settings" method="POST">
+        <div>
+            <label for="name">Site Name:</label>
+            <input type="text" id="name" name="name" value="<%= site.name %>" required>
+        </div>
+        <div>
+            <label for="description">Site Description:</label>
+            <textarea id="description" name="description" required><%= site.description %></textarea>
+        </div>
+        <button type="submit">Update Settings</button>
+    </form>
+    <a href="/organiser">Back to Organiser Home</a>
+</body>
+</html> 
