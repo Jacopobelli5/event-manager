@@ -1,16 +1,15 @@
+// No help needed until next help comment below
 const express = require('express');
 const router = express.Router();
 const { body, validationResult } = require('express-validator');
 const expressValidator = require('express-validator');
 
 /**
- * GET /organiser
- * Organiser Home Page
- * Purpose: Display organiser dashboard with site info, event lists, and actions.
- * Inputs: None
- * Outputs: Renders organiser-home.ejs with site and event data
- */
+GET /organiser
+Shows the main dashboard for organisers with all their events
+*/
 router.get('/', (req, res) => {
+    // Help needed here - Complex nested queries and data aggregation
     global.db.get("SELECT * FROM site_settings WHERE id = 1", (err, result) => {
         if (err) {
             console.error(err);
@@ -107,15 +106,13 @@ router.get('/', (req, res) => {
             });
         });
     });
+    // help ended
 });
 
 /**
- * GET /organiser/settings
- * Site Settings Page
- * Purpose: Display a form to edit the site name and description.
- * Inputs: None
- * Outputs: Renders site-settings.ejs with current site settings.
- */
+GET /organiser/settings
+Shows the site settings page where organisers can change the site name and description
+*/
 router.get('/settings', (req, res) => {
     global.db.get("SELECT * FROM site_settings WHERE id = 1", (err, result) => {
         if (err) {
@@ -130,12 +127,9 @@ router.get('/settings', (req, res) => {
 });
 
 /**
- * POST /organiser/settings
- * Update Site Settings
- * Purpose: Update the site name and description in the database.
- * Inputs: name (string), description (string) from form body
- * Outputs: Redirects to /organiser
- */
+POST /organiser/settings
+Saves the updated site name and description to the database
+*/
 router.post('/settings', [
     body('name').trim().notEmpty().withMessage('Name is required.'),
     body('description').trim().notEmpty().withMessage('Description is required.')
@@ -158,12 +152,9 @@ router.post('/settings', [
 });
 
 /**
- * POST /organiser/events/new
- * Create New Draft Event
- * Purpose: Create a new draft event and redirect to its edit page.
- * Inputs: None
- * Outputs: Redirects to /organiser/events/:id/edit
- */
+POST /organiser/events/new
+Creates a new draft event and takes you to edit it
+*/
 router.post('/events/new', (req, res) => {
     var sql = "INSERT INTO events (title, description, event_date, status) VALUES ('New Event Title', 'Event Description', DATETIME('now'), 'draft')";
     global.db.run(sql, function(err) {
@@ -176,12 +167,9 @@ router.post('/events/new', (req, res) => {
 });
 
 /**
- * GET /organiser/events/:id/edit
- * Organiser Edit Event Page
- * Purpose: Display a form to edit an event's details.
- * Inputs: Event ID from URL parameter
- * Outputs: Renders organiser-edit-event.ejs with event and ticket data.
- */
+GET /organiser/events/:id/edit
+Shows the edit page for a specific event
+*/
 router.get('/events/:id/edit', (req, res) => {
     var eventId = req.params.id;
     global.db.get("SELECT * FROM events WHERE id = ?", [eventId], (err, result) => {
@@ -209,16 +197,12 @@ router.get('/events/:id/edit', (req, res) => {
     });
 });
 
-
-
 /**
- * GET /organiser/events/:id/bookings
- * Organiser Bookings Page
- * Purpose: Display all bookings for a specific event.
- * Inputs: Event ID from URL parameter
- * Outputs: Renders organiser-bookings.ejs with event and booking data
- */
+GET /organiser/events/:id/bookings
+Shows all the bookings for a specific event
+*/
 router.get('/events/:id/bookings', function(req, res) {
+    // help needed here - Complex JOIN queries and data aggregation
     var eventId = req.params.id;
 
     // Get the event
@@ -261,15 +245,13 @@ router.get('/events/:id/bookings', function(req, res) {
             });
         });
     });
+    // help ended
 });
 
 /**
- * POST /organiser/event/:id/save-complete
- * Save Complete Event (Event Details + Ticket)
- * Purpose: Save both event details and ticket in one operation.
- * Inputs: Event ID from URL, form data (title, description, event_date, published, ticket_name, ticket_price, ticket_quantity)
- * Outputs: Redirects to /organiser
- */
+POST /organiser/event/:id/save-complete
+Saves both the event details and ticket information together
+*/
 router.post('/event/:id/save-complete', [
     expressValidator.body('title').trim().notEmpty().withMessage('Title is required.'),
     expressValidator.body('description').trim().notEmpty().withMessage('Description is required.'),
@@ -364,12 +346,9 @@ router.post('/event/:id/save-complete', [
 });
 
 /**
- * POST /organiser/event/:id/save
- * Save Event Details
- * Purpose: Update an event's title, description, and date in the database.
- * Inputs: Event ID from URL, form data (title, description, event_date, published)
- * Outputs: Redirects to /organiser
- */
+POST /organiser/event/:id/save
+Updates just the event details (title, description, date)
+*/
 router.post('/event/:id/save', [
     expressValidator.body('title').trim().notEmpty().withMessage('Title is required.'),
     expressValidator.body('description').trim().notEmpty().withMessage('Description is required.'),
@@ -396,12 +375,9 @@ router.post('/event/:id/save', [
 });
 
 /**
- * POST /organiser/event/:id/ticket
- * Save Ticket Configuration
- * Purpose: Create or update a ticket for an event.
- * Inputs: Event ID from URL, form data (ticket_name, ticket_price, ticket_quantity)
- * Outputs: Redirects to /organiser
- */
+POST /organiser/event/:id/ticket
+Creates or updates the ticket for an event
+*/
 router.post('/event/:id/ticket', [
     expressValidator.body('ticket_name').trim().notEmpty().withMessage('Ticket name is required.'),
     expressValidator.body('ticket_price').isFloat({ min: 0 }).withMessage('Ticket price must be 0 or more.'),
@@ -460,12 +436,9 @@ router.post('/event/:id/ticket', [
 });
 
 /**
- * POST /organiser/events/:id
- * Update Event Details
- * Purpose: Update an event's title, description, and date in the database.
- * Inputs: Event ID from URL, form data (title, description, event_date)
- * Outputs: Redirects to /organiser
- */
+POST /organiser/events/:id
+Updates the basic event information
+*/
 router.post('/events/:id', [
     expressValidator.body('title').trim().notEmpty().withMessage('Title is required.'),
     expressValidator.body('description').trim().notEmpty().withMessage('Description is required.'),
@@ -490,12 +463,9 @@ router.post('/events/:id', [
 });
 
 /**
- * POST /organiser/events/:id/publish
- * Publish a Draft Event
- * Purpose: Change an event's status from 'draft' to 'published'.
- * Inputs: Event ID from URL
- * Outputs: Redirects to /organiser
- */
+POST /organiser/events/:id/publish
+Makes a draft event visible to attendees
+*/
 router.post('/events/:id/publish', (req, res) => {
     var eventId = req.params.id;
     var sql = "UPDATE events SET status = 'published', published_at = CURRENT_TIMESTAMP WHERE id = ?";
@@ -509,12 +479,9 @@ router.post('/events/:id/publish', (req, res) => {
 });
 
 /**
- * POST /organiser/events/:id/delete
- * Delete an Event
- * Purpose: Remove an event from the database.
- * Inputs: Event ID from URL
- * Outputs: Redirects to /organiser
- */
+POST /organiser/events/:id/delete
+Removes an event from the system
+*/
 router.post('/events/:id/delete', (req, res) => {
     var eventId = req.params.id;
     var sql = "DELETE FROM events WHERE id = ?";
@@ -527,14 +494,10 @@ router.post('/events/:id/delete', (req, res) => {
     });
 });
 
-
-
 /**
- * POST /organiser/events/:id/tickets/:ticketId/edit
- * Edit an existing ticket type
- * Inputs: event id, ticket id (URL), type_name, ticket_count, ticket_price (form)
- * Outputs: Redirects to the event edit page
- */
+POST /organiser/events/:id/tickets/:ticketId/edit
+Updates an existing ticket's details
+*/
 router.post('/events/:id/tickets/:ticketId/edit', [
     expressValidator.body('type_name').trim().notEmpty().withMessage('Type name is required.'),
     expressValidator.body('ticket_count').isInt({ min: 1 }).withMessage('Ticket count must be at least 1.'),
@@ -560,11 +523,9 @@ router.post('/events/:id/tickets/:ticketId/edit', [
 });
 
 /**
- * POST /organiser/events/:id/tickets/:ticketId/delete
- * Delete a ticket type from an event
- * Inputs: event id, ticket id (URL)
- * Outputs: Redirects to the event edit page
- */
+POST /organiser/events/:id/tickets/:ticketId/delete
+Removes a ticket from an event
+*/
 router.post('/events/:id/tickets/:ticketId/delete', (req, res) => {
     var eventId = req.params.id;
     var ticketId = req.params.ticketId;

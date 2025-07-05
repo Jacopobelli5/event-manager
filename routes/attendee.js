@@ -1,4 +1,4 @@
-console.log('Attendee routes loaded'); // DEBUG LOG
+// No help needed until next help comment below
 
 const express = require('express');
 const router = express.Router();
@@ -6,10 +6,7 @@ const expressValidator = require('express-validator');
 
 /**
  * GET /attendee
- * Attendee Home Page
- * Purpose: Display site info and a list of published events for attendees.
- * Inputs: None
- * Outputs: Renders attendee-home.ejs with site and event data.
+ * Shows the main page for attendees with all published events
  */
 router.get('/', function(req, res) {
     global.db.get("SELECT * FROM site_settings WHERE id = 1", function(err, result) {
@@ -35,12 +32,10 @@ router.get('/', function(req, res) {
 
 /**
  * GET /attendee/event/:id
- * Attendee Event Page
- * Purpose: Display details for a single event and a booking form.
- * Inputs: Event ID from URL parameter.
- * Outputs: Renders attendee-event-page.ejs with event and ticket data.
+ * Shows a specific event page with booking form
  */
 router.get('/event/:id', function(req, res) {
+    // help needed here - Nested queries and ticket availability calculation
     var eventId = req.params.id;
     global.db.get("SELECT * FROM events WHERE id = ? AND status = 'published'", [eventId], function(err, result) {
         if (err) {
@@ -64,7 +59,7 @@ router.get('/event/:id', function(req, res) {
                 return res.render('attendee-event-page', { event: result, ticket: null, request: req });
             }
             
-                            // Calculate remaining tickets
+     // Calculate remaining tickets
                 global.db.get("SELECT SUM(quantity) as booked FROM booking_tickets WHERE ticket_id = ?", [ticket.id], function(err, bookedResult) {
                     if (err) {
                         console.error(err);
@@ -77,14 +72,12 @@ router.get('/event/:id', function(req, res) {
                 });
         });
     });
+    // help ended
 });
 
 /**
  * POST /attendee/book/:id
- * Handle Event Booking
- * Purpose: Create a booking record for an event.
- * Inputs: Event ID from URL, form data (name, email, quantity)
- * Outputs: Redirects to attendee home on success.
+ * Processes a booking for an event
  */
 router.post('/book/:id', [
     expressValidator.body('name').trim().notEmpty().withMessage('Your name is required.'),
@@ -101,7 +94,7 @@ router.post('/book/:id', [
     var attendeeEmail = req.body.email;
     var quantity = parseInt(req.body.quantity, 10);
     
-    // First, get the event and its ticket
+    // First get the event and its ticket
     global.db.get("SELECT * FROM events WHERE id = ? AND status = 'published'", [eventId], function(err, event) {
         if (err) {
             console.error(err);
