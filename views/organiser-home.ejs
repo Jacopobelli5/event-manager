@@ -1,3 +1,4 @@
+<!--No help needed on this page -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -36,10 +37,12 @@
         <div class="row mb-4">
             <div class="col">
                 <h3 class="mb-3">Published Events</h3>
+                <!-- Check if there are published events to display -->
                 <% if (publishedEvents.length === 0) { %>
                     <div class="alert alert-info">No published events.</div>
                 <% } else { %>
                     <div class="row">
+                        <!-- Loop through each published event to create event cards -->
                         <% publishedEvents.forEach(function(event) { %>
                             <div class="col-md-6 col-lg-4 mb-3">
                                 <div class="card h-100">
@@ -51,6 +54,7 @@
                                             <strong>Published:</strong> <%= event.published_at ? new Date(event.published_at).toLocaleString() : 'N/A' %>
                                         </p>
                                         
+                                        <!-- Check if event has a ticket and display ticket info -->
                                         <% if (event.ticket) { %>
                                             <h6 class="card-subtitle mb-2 text-muted">Ticket:</h6>
                                             <p class="small">
@@ -83,10 +87,12 @@
         <div class="row">
             <div class="col">
                 <h3 class="mb-3">Draft Events</h3>
+                <!-- Check if there are draft events to display -->
                 <% if (draftEvents.length === 0) { %>
                     <div class="alert alert-warning">No draft events.</div>
                 <% } else { %>
                     <div class="row">
+                        <!-- Loop through each draft event to create event cards -->
                         <% draftEvents.forEach(function(event) { %>
                             <div class="col-md-6 col-lg-4 mb-3">
                                 <div class="card h-100 border-warning">
@@ -97,6 +103,7 @@
                                             <strong>Created:</strong> <%= event.created_at ? new Date(event.created_at).toLocaleString() : 'N/A' %>
                                         </p>
                                         
+                                        <!-- Check if event has a ticket and display ticket info -->
                                         <% if (event.ticket) { %>
                                             <h6 class="card-subtitle mb-2 text-muted">Ticket:</h6>
                                             <p class="small">

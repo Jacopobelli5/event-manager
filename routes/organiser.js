@@ -15,6 +15,7 @@ router.get('/', (req, res) => {
             console.error(err);
             return res.status(500).send("Error fetching site settings.");
         }
+        // Provide default site settings if none exist in database
         if (!result) {
             result = { name: 'Event Manager', description: 'Your events, organised.' };
         }
@@ -47,6 +48,7 @@ router.get('/', (req, res) => {
                     if (event.ticket_id) allTicketIds.push(event.ticket_id);
                 });
                 
+                // Handle case where no events have tickets - set all tickets to null
                 if (allTicketIds.length === 0) {
                     function attachTickets(events) {
                         events.forEach(event => {
@@ -75,6 +77,7 @@ router.get('/', (req, res) => {
                             console.error(err);
                             return res.status(500).send("Error fetching booked ticket counts.");
                         }
+                        // Create a map for quick lookup of booked quantities by ticket ID
                         var bookedMap = {};
                         bookedResults.forEach(row => {
                             bookedMap[row.ticket_id] = row.booked || 0;
@@ -86,6 +89,7 @@ router.get('/', (req, res) => {
                                 if (event.ticket_id) {
                                     event.ticket = ticketResults.find(t => t.id === event.ticket_id);
                                     if (event.ticket) {
+                                        // Calculate remaining tickets by subtracting booked from total
                                         var booked = parseInt(bookedMap[event.ticket_id] || 0, 10);
                                         event.ticket.remaining = event.ticket.quantity - booked;
                                     }
@@ -119,6 +123,7 @@ router.get('/settings', (req, res) => {
             console.error(err);
             return res.status(500).send("Error fetching site settings.");
         }
+        // Provide default site settings if none exist in database
         if (!result) {
             result = { name: 'Event Manager', description: 'Your events, organised.' };
         }
@@ -134,6 +139,7 @@ router.post('/settings', [
     body('name').trim().notEmpty().withMessage('Name is required.'),
     body('description').trim().notEmpty().withMessage('Description is required.')
 ], function(req, res) {
+    // Check for validation errors and return them as HTML if any exist
     var errors = validationResult(req);
     if (!errors.isEmpty()) {
         // Return error messages as a simple string (or you can render the form with errors)
@@ -141,6 +147,7 @@ router.post('/settings', [
     }
     var name = req.body.name;
     var description = req.body.description;
+    // Use UPSERT to insert or update site settings (SQLite syntax)
     var sql = "INSERT INTO site_settings (id, name, description) VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, description = excluded.description;";
     global.db.run(sql, [name, description], function(err) {
         if (err) {
@@ -269,6 +276,7 @@ router.post('/event/:id/save-complete', [
     var title = req.body.title;
     var description = req.body.description;
     var event_date = req.body.event_date;
+    // Convert checkbox value to boolean (1 for checked, 0 for unchecked)
     var published = req.body.published ? 1 : 0;
     var ticket_name = req.body.ticket_name;
     var ticket_price = req.body.ticket_price;
@@ -285,6 +293,7 @@ router.post('/event/:id/save-complete', [
             return res.status(500).send("Error checking event ticket.");
         }
         
+        // Ensure event exists before proceeding with updates
         if (!event) {
             global.db.run('ROLLBACK');
             return res.status(404).send("Event not found.");
@@ -292,6 +301,7 @@ router.post('/event/:id/save-complete', [
         
         var ticketId;
         
+        // Handle existing ticket - update it
         if (event.ticket_id) {
             // Update existing ticket
             var updateTicketSql = "UPDATE tickets SET name = ?, price = ?, quantity = ? WHERE id = ?";
@@ -301,6 +311,7 @@ router.post('/event/:id/save-complete', [
                     console.error(err);
                     return res.status(500).send("Error updating ticket.");
                 }
+                // Use existing ticket ID for event update
                 ticketId = event.ticket_id;
                 
                 // Update event
@@ -326,6 +337,7 @@ router.post('/event/:id/save-complete', [
                     return res.status(500).send("Error creating ticket.");
                 }
                 
+                // Get the new ticket ID for linking to event
                 ticketId = this.lastID;
                 
                 // Update event with ticket_id
@@ -362,6 +374,7 @@ router.post('/event/:id/save', [
     var title = req.body.title;
     var description = req.body.description;
     var event_date = req.body.event_date;
+    // Convert checkbox value to boolean (1 for checked, 0 for unchecked)
     var published = req.body.published ? 1 : 0;
     
     var sql = "UPDATE events SET title = ?, description = ?, event_date = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?";
@@ -400,6 +413,7 @@ router.post('/event/:id/ticket', [
             return res.status(500).send("Error checking event ticket.");
         }
         
+        // Handle existing ticket - update it
         if (event.ticket_id) {
             // Update existing ticket
             var updateSql = "UPDATE tickets SET name = ?, price = ?, quantity = ? WHERE id = ?";
@@ -419,6 +433,7 @@ router.post('/event/:id/ticket', [
                     return res.status(500).send("Error creating ticket.");
                 }
                 
+                // Get the new ticket ID for linking to event
                 var ticketId = this.lastID;
                 
                 // Update event with ticket_id

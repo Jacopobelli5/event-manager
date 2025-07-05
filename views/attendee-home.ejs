@@ -1,3 +1,4 @@
+<!--No help needed on this page -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -25,6 +26,7 @@
         <div class="row">
             <div class="col">
                 <h3 class="mb-3">Available Events</h3>
+                <!-- Check if there are any events to display -->
                 <% if (events.length === 0) { %>
                     <div class="alert alert-info">
                         <h4 class="alert-heading">No Events Available</h4>
@@ -32,6 +34,7 @@
                     </div>
                 <% } else { %>
                     <div class="row">
+                        <!-- Loop through each event to create event cards -->
                         <% events.forEach(function(event) { %>
                             <div class="col-md-6 col-lg-4 mb-3">
                                 <div class="card h-100">

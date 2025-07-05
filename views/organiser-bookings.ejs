@@ -1,3 +1,4 @@
+<!--No help needed on this page -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -60,6 +61,7 @@
                         <h5 class="card-title text-info">Total Revenue</h5>
                         <h2 class="display-6">
                             $<%
+                            // Calculate total revenue by looping through all bookings
                             var totalRevenue = 0;
                             bookings.forEach(function(booking) {
                                 totalRevenue += booking.quantity * booking.ticket_price;
@@ -94,6 +96,7 @@
                         <h3 class="card-title mb-0">Booking Details</h3>
                     </div>
                     <div class="card-body">
+                        <!-- Check if there are bookings to display -->
                         <% if (bookings.length === 0) { %>
                             <div class="alert alert-info">
                                 <h4 class="alert-heading">No Bookings Yet</h4>
@@ -113,12 +116,14 @@
                                         </tr>
                                     </thead>
                                     <tbody>
+                            <!-- Loop through each booking to create table rows -->
                             <% bookings.forEach(function(booking) { %>
                                 <tr>
                                     <td><span class="badge bg-secondary"><%= booking.id %></span></td>
                                     <td><strong><%= booking.attendee_name %></strong></td>
                                     <td><span class="badge bg-primary"><%= booking.quantity %></span></td>
                                     <td>$<%= booking.ticket_price %></td>
+                                    <!-- Calculate total price for this booking -->
                                     <td><strong>$<%= (booking.quantity * booking.ticket_price).toFixed(2) %></strong></td>
                                     <td><%= new Date(booking.created_at).toLocaleString() %></td>
                                 </tr>

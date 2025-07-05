@@ -14,6 +14,7 @@ router.get('/', function(req, res) {
             console.error(err);
             return res.status(500).send("Error fetching site settings.");
         }
+        // Provide default site settings if none exist in database
         if (!result) {
             result = { name: 'Event Manager', description: 'Welcome!' };
         }
@@ -45,7 +46,7 @@ router.get('/event/:id', function(req, res) {
         if (!result) {
             return res.status(404).send("Event not found or not published.");
         }
-        // Get the ticket for this event
+        // Handle events without tickets, render page without ticket info
         if (!result.ticket_id) {
             return res.render('attendee-event-page', { event: result, ticket: null, request: req });
         }
@@ -55,16 +56,18 @@ router.get('/event/:id', function(req, res) {
                 console.error(err);
                 return res.status(500).send("Error fetching ticket.");
             }
+            // Handle case where ticket doesn't exist in database
             if (!ticket) {
                 return res.render('attendee-event-page', { event: result, ticket: null, request: req });
             }
             
-     // Calculate remaining tickets
+            // Calculate remaining tickets by subtracting booked from total
                 global.db.get("SELECT SUM(quantity) as booked FROM booking_tickets WHERE ticket_id = ?", [ticket.id], function(err, bookedResult) {
                     if (err) {
                         console.error(err);
                         return res.status(500).send("Error fetching booked tickets.");
                     }
+                    // Convert booked count to number, default to 0 if null
                     var booked = parseInt(bookedResult.booked || 0, 10);
                     ticket.remaining = ticket.quantity - booked;
                     
@@ -84,6 +87,7 @@ router.post('/book/:id', [
     expressValidator.body('email').isEmail().withMessage('Valid email is required.'),
     expressValidator.body('quantity').isInt({ min: 1 }).withMessage('Quantity must be at least 1.')
 ], function(req, res) {
+    // Check for validation errors and return them as HTML if any exist
     var errors = expressValidator.validationResult(req);
     if (!errors.isEmpty()) {
         return res.status(400).send(errors.array().map(function(e) { return e.msg; }).join('<br>'));
@@ -92,9 +96,10 @@ router.post('/book/:id', [
     var eventId = req.params.id;
     var attendeeName = req.body.name;
     var attendeeEmail = req.body.email;
+    // Convert quantity string to integer for calculations
     var quantity = parseInt(req.body.quantity, 10);
     
-    // First get the event and its ticket
+    // Multi step booking process to get event, then ticket, then check availability
     global.db.get("SELECT * FROM events WHERE id = ? AND status = 'published'", [eventId], function(err, event) {
         if (err) {
             console.error(err);
@@ -103,11 +108,12 @@ router.post('/book/:id', [
         if (!event) {
             return res.status(404).send("Event not found or not published.");
         }
+        // Ensure event has tickets configured before proceeding
         if (!event.ticket_id) {
             return res.status(400).send("No tickets available for this event.");
         }
         
-        // Get the ticket details
+        // Fetch ticket details for availability check
         global.db.get("SELECT * FROM tickets WHERE id = ?", [event.ticket_id], function(err, ticket) {
             if (err) {
                 console.error(err);
@@ -124,6 +130,7 @@ router.post('/book/:id', [
                     return res.status(500).send("Error checking ticket availability.");
                 }
                 
+                // Calculate available tickets and validate request quantity and prevent overbooking by checking availability
                 var booked = parseInt(bookedResult.booked || 0, 10);
                 var available = ticket.quantity - booked;
                 
@@ -138,6 +145,7 @@ router.post('/book/:id', [
                         return res.status(500).send("Error creating booking.");
                     }
                     
+                    // Get the new booking ID for linking ticket details
                     var bookingId = this.lastID;
                     
                     // Create the booking_tickets record
