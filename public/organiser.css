@@ -1,0 +1,17 @@
+/* Organiser-specific styles only */
+
+/* Statistics cards */
+.stats-card {
+    text-align: center;
+    padding: 2rem 1.5rem;
+}
+
+/* Event management buttons */
+.event-actions {
+    margin-top: 1rem;
+}
+
+/* Booking table styling */
+.booking-table {
+    margin-top: 1rem;
+} 

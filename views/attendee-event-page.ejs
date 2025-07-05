@@ -3,46 +3,123 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><%= event.title %></title>
+    <title><%= event.title %> - Event Details</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/main.css">
+    <link rel="stylesheet" href="/attendee.css">
 </head>
 <body>
-    <h1><%= event.title %></h1>
-    <p><strong>Date:</strong> <%= new Date(event.event_date).toLocaleString() %></p>
-    <p><%= event.description %></p>
-
-    <hr>
-
-    <h2>Book Tickets</h2>
-    <form action="/attendee/book/<%= event.id %>" method="POST">
-        <div>
-            <label for="attendee_name">Your Name:</label>
-            <input type="text" id="attendee_name" name="attendee_name" required>
+    <div class="container py-4">
+        <!-- Header -->
+        <div class="row mb-4">
+            <div class="col">
+                <nav aria-label="breadcrumb">
+                    <ol class="breadcrumb">
+                        <li class="breadcrumb-item"><a href="/attendee">Home</a></li>
+                        <li class="breadcrumb-item active" aria-current="page"><%= event.title %></li>
+                    </ol>
+                </nav>
+                <h1 class="display-4 mb-2"><%= event.title %></h1>
+                <p class="lead text-muted">
+                    <strong>Date:</strong> <%= new Date(event.event_date).toLocaleString() %><br>
+                    <strong>Published:</strong> <%= event.published_at ? new Date(event.published_at).toLocaleString() : 'N/A' %>
+                </p>
+            </div>
         </div>
 
-        <h3>Select Tickets:</h3>
-        <% if (ticketTypes.length === 0) { %>
-            <p>Sorry, no tickets are available for this event.</p>
-        <% } else { %>
-            <% ticketTypes.forEach(function(ticket) { %>
-                <div>
-                    <label for="ticket_<%= ticket.id %>">
-                        <%= ticket.type_name %> ($<%= ticket.ticket_price %>) - 
-                        (Available: <%= ticket.remaining %>)
-                    </label>
-                    <% if (ticket.remaining > 0) { %>
-                        <input type="number" name="tickets[<%= ticket.id %>]" id="ticket_<%= ticket.id %>" value="0" min="0" max="<%= ticket.remaining %>">
-                    <% } else { %>
-                        <span style="color:red;">Sold Out</span>
-                    <% } %>
+        <!-- Event Details -->
+        <div class="row mb-4">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-body">
+                        <h3 class="card-title">Event Description</h3>
+                        <p class="card-text"><%= event.description %></p>
+                    </div>
                 </div>
-            <% }); %>
-            <button type="submit">Book Now</button>
-        <% } %>
-    </form>
-    
-    <hr>
+            </div>
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h4 class="card-title">Ticket Information</h4>
+                        <% if (ticket) { %>
+                            <div class="mb-3">
+                                <h5 class="text-primary"><%= ticket.name %></h5>
+                                <p class="card-text">
+                                    <strong>Price:</strong> $<%= ticket.price %><br>
+                                    <strong>Available:</strong> <span class="badge bg-success"><%= ticket.quantity %></span>
+                                </p>
+                                <p class="card-text"><small class="text-muted"><%= ticket.description %></small></p>
+                            </div>
+                        <% } else { %>
+                            <div class="alert alert-warning">
+                                <h5 class="alert-heading">No Tickets Available</h5>
+                                <p>This event currently has no tickets available for booking.</p>
+                            </div>
+                        <% } %>
+                    </div>
+                </div>
+            </div>
+        </div>
 
-    <a href="/attendee">Back to All Events</a>
+        <!-- Booking Form -->
+        <% if (ticket && ticket.quantity > 0) { %>
+            <div class="row">
+                <div class="col-md-8">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title mb-0">Book Tickets</h3>
+                        </div>
+                        <div class="card-body">
+                            <form action="/attendee/book/<%= event.id %>" method="POST">
+                                <div class="mb-3">
+                                    <label for="name" class="form-label">Your Name</label>
+                                    <input type="text" class="form-control" id="name" name="name" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="email" class="form-label">Email Address</label>
+                                    <input type="email" class="form-control" id="email" name="email" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="quantity" class="form-label">Number of Tickets</label>
+                                    <select class="form-select" id="quantity" name="quantity" required>
+                                        <% for (let i = 1; i <= Math.min(ticket.quantity, 10); i++) { %>
+                                            <option value="<%= i %>"><%= i %> ticket<%= i > 1 ? 's' : '' %> - $<%= (ticket.price * i).toFixed(2) %></option>
+                                        <% } %>
+                                    </select>
+                                </div>
+                                <button type="submit" class="btn btn-primary btn-lg">Book Tickets</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        <% } %>
+
+        <!-- Share Link -->
+        <div class="row mt-4">
+            <div class="col">
+                <div class="card">
+                    <div class="card-body">
+                        <h4 class="card-title">Share This Event</h4>
+                        <p class="card-text">Share this link with friends and family:</p>
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="shareLink" value="http://localhost:3000/attendee/event/<%= event.id %>" readonly>
+                            <button class="btn btn-secondary" type="button" onclick="copyToClipboard()">Copy</button>
+                        </div>
+                        <script>
+                            function copyToClipboard() {
+                                var copyText = document.getElementById("shareLink");
+                                copyText.select();
+                                navigator.clipboard.writeText(copyText.value);
+                            }
+                        </script>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 </body>
 </html> 

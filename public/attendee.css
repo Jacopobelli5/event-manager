@@ -1,0 +1,20 @@
+/* Attendee-specific styles only */
+
+/* Event card height for consistent layout */
+.event-card {
+    height: 100%;
+}
+
+/* Ticket price styling */
+.ticket-price {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--accent-green);
+}
+
+/* Share link section */
+.share-link-section {
+    background: #e3f2fd;
+    border-radius: 8px;
+    padding: 1rem;
+} 

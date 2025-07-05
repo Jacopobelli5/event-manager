@@ -3,26 +3,56 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Events</title>
+    <title>Attendee Home Page</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/main.css">
+    <link rel="stylesheet" href="/attendee.css">
 </head>
 <body>
-    <h1><%= site.name %></h1>
-    <p><%= site.description %></p>
+    <div class="container py-4">
+        <!-- Header -->
+        <div class="row mb-4">
+            <div class="col">
+                <h1 class="display-4 mb-2">Welcome to Events</h1>
+                <h2 class="h3 text-muted mb-1"><%= site.name %></h2>
+                <p class="lead"><%= site.description %></p>
+            </div>
+        </div>
 
-    <h2>Upcoming Events</h2>
-    <% if (events.length === 0) { %>
-        <p>No upcoming events. Please check back later!</p>
-    <% } else { %>
-        <ul>
-            <% events.forEach(function(event) { %>
-                <li>
-                    <a href="/attendee/event/<%= event.id %>">
-                        <strong><%= event.title %></strong> - <%= new Date(event.event_date).toLocaleDateString() %>
-                    </a>
-                </li>
-            <% }); %>
-        </ul>
-    <% } %>
+        <!-- Published Events -->
+        <div class="row">
+            <div class="col">
+                <h3 class="mb-3">Available Events</h3>
+                <% if (events.length === 0) { %>
+                    <div class="alert alert-info">
+                        <h4 class="alert-heading">No Events Available</h4>
+                        <p>There are currently no published events. Please check back later!</p>
+                    </div>
+                <% } else { %>
+                    <div class="row">
+                        <% events.forEach(function(event) { %>
+                            <div class="col-md-6 col-lg-4 mb-3">
+                                <div class="card h-100">
+                                    <div class="card-body">
+                                        <h5 class="card-title"><%= event.title %></h5>
+                                        <p class="card-text text-muted">
+                                            <strong>Date:</strong> <%= new Date(event.event_date).toLocaleString() %><br>
+                                            <strong>Published:</strong> <%= event.published_at ? new Date(event.published_at).toLocaleString() : 'N/A' %>
+                                        </p>
+                                        <p class="card-text"><%= event.description %></p>
+                                    </div>
+                                    <div class="card-footer bg-transparent border-0">
+                                        <a href="/attendee/event/<%= event.id %>" class="btn btn-primary w-100">View Event & Book Tickets</a>
+                                    </div>
+                                </div>
+                            </div>
+                        <% }); %>
+                    </div>
+                <% } %>
+            </div>
+        </div>
+    </div>
 </body>
 </html> 

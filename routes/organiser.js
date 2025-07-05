@@ -1,5 +1,7 @@
 const express = require('express');
 const router = express.Router();
+const { body, validationResult } = require('express-validator');
+const expressValidator = require('express-validator');
 
 /**
  * GET /organiser
@@ -9,41 +11,102 @@ const router = express.Router();
  * Outputs: Renders organiser-home.ejs with site and event data
  */
 router.get('/', (req, res) => {
-    
-    const getSiteSettings = new Promise((resolve, reject) => {
-        global.db.get("SELECT * FROM site_settings WHERE id = 1", (err, row) => {
-            if (err) reject(err);
-            // If no settings yet, provide default values
-            resolve(row || { name: 'Event Manager', description: 'Your events, organised.' });
-        });
-    });
-
-    const getPublishedEvents = new Promise((resolve, reject) => {
-        global.db.all("SELECT * FROM events WHERE status = 'published' ORDER BY event_date DESC", (err, rows) => {
-            if (err) reject(err);
-            resolve(rows);
-        });
-    });
-
-    const getDraftEvents = new Promise((resolve, reject) => {
-        global.db.all("SELECT * FROM events WHERE status = 'draft' ORDER BY created_at DESC", (err, rows) => {
-            if (err) reject(err);
-            resolve(rows);
-        });
-    });
-
-    Promise.all([getSiteSettings, getPublishedEvents, getDraftEvents])
-        .then(([siteSettings, publishedEvents, draftEvents]) => {
-            res.render('organiser-home', {
-                site: siteSettings,
-                publishedEvents: publishedEvents,
-                draftEvents: draftEvents
-            });
-        })
-        .catch(err => {
+    global.db.get("SELECT * FROM site_settings WHERE id = 1", (err, result) => {
+        if (err) {
             console.error(err);
-            res.status(500).send("Error retrieving data from database.");
+            return res.status(500).send("Error fetching site settings.");
+        }
+        if (!result) {
+            result = { name: 'Event Manager', description: 'Your events, organised.' };
+        }
+        global.db.all("SELECT * FROM events WHERE status = 'published' ORDER BY event_date DESC", (err, publishedResults) => {
+            if (err) {
+                console.error(err);
+                return res.status(500).send("Error fetching published events.");
+            }
+            global.db.all("SELECT * FROM events WHERE status = 'draft' ORDER BY created_at DESC", (err, draftResults) => {
+                if (err) {
+                    console.error(err);
+                    return res.status(500).send("Error fetching draft events.");
+                }
+                // Fetch all tickets for all events
+                var allEventIds = publishedResults.map(e => e.id).concat(draftResults.map(e => e.id));
+                if (allEventIds.length === 0) {
+                    return res.render('organiser-home', {
+                        site: result,
+                        publishedEvents: publishedResults,
+                        draftEvents: draftResults
+                    });
+                }
+                
+                // Get all ticket IDs from events
+                var allTicketIds = [];
+                publishedResults.forEach(event => {
+                    if (event.ticket_id) allTicketIds.push(event.ticket_id);
+                });
+                draftResults.forEach(event => {
+                    if (event.ticket_id) allTicketIds.push(event.ticket_id);
+                });
+                
+                if (allTicketIds.length === 0) {
+                    function attachTickets(events) {
+                        events.forEach(event => {
+                            event.ticket = null;
+                        });
+                    }
+                    attachTickets(publishedResults);
+                    attachTickets(draftResults);
+                    return res.render('organiser-home', {
+                        site: result,
+                        publishedEvents: publishedResults,
+                        draftEvents: draftResults
+                    });
+                }
+                
+                var ticketPlaceholders = allTicketIds.map(() => '?').join(',');
+                global.db.all("SELECT * FROM tickets WHERE id IN (" + ticketPlaceholders + ")", allTicketIds, (err, ticketResults) => {
+                    if (err) {
+                        console.error(err);
+                        return res.status(500).send("Error fetching tickets.");
+                    }
+                    
+                    // Fetch booked quantities for all tickets
+                    global.db.all("SELECT ticket_id, SUM(quantity) as booked FROM booking_tickets WHERE ticket_id IN (" + ticketPlaceholders + ") GROUP BY ticket_id", allTicketIds, (err, bookedResults) => {
+                        if (err) {
+                            console.error(err);
+                            return res.status(500).send("Error fetching booked ticket counts.");
+                        }
+                        var bookedMap = {};
+                        bookedResults.forEach(row => {
+                            bookedMap[row.ticket_id] = row.booked || 0;
+                        });
+                        
+                        // Attach tickets and remaining to each event
+                        function attachTickets(events) {
+                            events.forEach(event => {
+                                if (event.ticket_id) {
+                                    event.ticket = ticketResults.find(t => t.id === event.ticket_id);
+                                    if (event.ticket) {
+                                        var booked = parseInt(bookedMap[event.ticket_id] || 0, 10);
+                                        event.ticket.remaining = event.ticket.quantity - booked;
+                                    }
+                                } else {
+                                    event.ticket = null;
+                                }
+                            });
+                        }
+                        attachTickets(publishedResults);
+                        attachTickets(draftResults);
+                        res.render('organiser-home', {
+                            site: result,
+                            publishedEvents: publishedResults,
+                            draftEvents: draftResults
+                        });
+                    });
+                });
+            });
         });
+    });
 });
 
 /**
@@ -54,14 +117,15 @@ router.get('/', (req, res) => {
  * Outputs: Renders site-settings.ejs with current site settings.
  */
 router.get('/settings', (req, res) => {
-    global.db.get("SELECT * FROM site_settings WHERE id = 1", (err, row) => {
+    global.db.get("SELECT * FROM site_settings WHERE id = 1", (err, result) => {
         if (err) {
             console.error(err);
             return res.status(500).send("Error fetching site settings.");
         }
-        res.render('site-settings', {
-            site: row || { name: 'Event Manager', description: 'Your events, organised.' }
-        });
+        if (!result) {
+            result = { name: 'Event Manager', description: 'Your events, organised.' };
+        }
+        res.render('site-settings', { site: result });
     });
 });
 
@@ -72,20 +136,19 @@ router.get('/settings', (req, res) => {
  * Inputs: name (string), description (string) from form body
  * Outputs: Redirects to /organiser
  */
-router.post('/settings', (req, res) => {
-    const { name, description } = req.body;
-
-    // Basic validation
-    if (!name || !description) {
-        return res.status(400).send("Name and description are required.");
+router.post('/settings', [
+    body('name').trim().notEmpty().withMessage('Name is required.'),
+    body('description').trim().notEmpty().withMessage('Description is required.')
+], function(req, res) {
+    var errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        // Return error messages as a simple string (or you can render the form with errors)
+        return res.status(400).send(errors.array().map(function(e) { return e.msg; }).join('<br>'));
     }
-
-    const sql = `
-        INSERT INTO site_settings (id, name, description) VALUES (1, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET name = excluded.name, description = excluded.description;
-    `;
-
-    global.db.run(sql, [name, description], (err) => {
+    var name = req.body.name;
+    var description = req.body.description;
+    var sql = "INSERT INTO site_settings (id, name, description) VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, description = excluded.description;";
+    global.db.run(sql, [name, description], function(err) {
         if (err) {
             console.error(err);
             return res.status(500).send("Error updating site settings.");
@@ -102,17 +165,13 @@ router.post('/settings', (req, res) => {
  * Outputs: Redirects to /organiser/events/:id/edit
  */
 router.post('/events/new', (req, res) => {
-    const sql = `
-        INSERT INTO events (title, description, event_date, status)
-        VALUES ('New Event Title', 'Event Description', DATETIME('now'), 'draft')
-    `;
+    var sql = "INSERT INTO events (title, description, event_date, status) VALUES ('New Event Title', 'Event Description', DATETIME('now'), 'draft')";
     global.db.run(sql, function(err) {
         if (err) {
             console.error(err);
             return res.status(500).send("Error creating new event.");
         }
-        // 'this.lastID' gives the ID of the row that was just inserted
-        res.redirect(`/organiser/events/${this.lastID}/edit`);
+        res.redirect('/organiser/events/' + this.lastID + '/edit');
     });
 });
 
@@ -124,33 +183,280 @@ router.post('/events/new', (req, res) => {
  * Outputs: Renders organiser-edit-event.ejs with event and ticket data.
  */
 router.get('/events/:id/edit', (req, res) => {
-    const eventId = req.params.id;
-
-    const getEvent = new Promise((resolve, reject) => {
-        global.db.get("SELECT * FROM events WHERE id = ?", [eventId], (err, row) => {
-            if (err) reject(err);
-            resolve(row);
-        });
-    });
-
-    const getTicketTypes = new Promise((resolve, reject) => {
-        global.db.all("SELECT * FROM ticket_types WHERE event_id = ?", [eventId], (err, rows) => {
-            if (err) reject(err);
-            resolve(rows);
-        });
-    });
-
-    Promise.all([getEvent, getTicketTypes])
-        .then(([event, ticketTypes]) => {
-            if (!event) {
-                return res.status(404).send("Event not found.");
-            }
-            res.render('organiser-edit-event', { event, ticketTypes });
-        })
-        .catch(err => {
+    var eventId = req.params.id;
+    global.db.get("SELECT * FROM events WHERE id = ?", [eventId], (err, result) => {
+        if (err) {
             console.error(err);
-            res.status(500).send("Error retrieving event data.");
+            return res.status(500).send("Error fetching event.");
+        }
+        if (!result) {
+            return res.status(404).send("Event not found.");
+        }
+        
+        // If event has a ticket_id, fetch the ticket
+        if (result.ticket_id) {
+            global.db.get("SELECT * FROM tickets WHERE id = ?", [result.ticket_id], (err, ticketResult) => {
+                if (err) {
+                    console.error(err);
+                    return res.status(500).send("Error fetching ticket.");
+                }
+                res.render('organiser-edit-event', { event: result, ticket: ticketResult });
+            });
+        } else {
+            // No ticket yet, pass null
+            res.render('organiser-edit-event', { event: result, ticket: null });
+        }
+    });
+});
+
+
+
+/**
+ * GET /organiser/events/:id/bookings
+ * Organiser Bookings Page
+ * Purpose: Display all bookings for a specific event.
+ * Inputs: Event ID from URL parameter
+ * Outputs: Renders organiser-bookings.ejs with event and booking data
+ */
+router.get('/events/:id/bookings', function(req, res) {
+    var eventId = req.params.id;
+
+    // Get the event
+    global.db.get("SELECT * FROM events WHERE id = ?", [eventId], function(err, eventResult) {
+        if (err) {
+            console.error(err);
+            return res.status(500).send("Error fetching event.");
+        }
+        if (!eventResult) {
+            return res.status(404).send("Event not found.");
+        }
+
+        // Get all bookings for the event with ticket information
+        global.db.all("SELECT b.*, bt.quantity, t.price as ticket_price FROM bookings b JOIN booking_tickets bt ON b.id = bt.booking_id JOIN tickets t ON bt.ticket_id = t.id WHERE b.event_id = ? ORDER BY b.created_at DESC", [eventId], function(err, bookingResults) {
+            if (err) {
+                console.error(err);
+                return res.status(500).send("Error fetching bookings.");
+            }
+
+            // Get the ticket for the event
+            global.db.get("SELECT * FROM tickets WHERE id = ?", [eventResult.ticket_id], function(err, ticketResult) {
+                if (err) {
+                    console.error(err);
+                    return res.status(500).send("Error fetching ticket.");
+                }
+
+                // Calculate total tickets sold
+                var totalTickets = 0;
+                for (var i = 0; i < bookingResults.length; i++) {
+                    totalTickets += bookingResults[i].quantity;
+                }
+
+                // Render the page
+                res.render('organiser-bookings', {
+                    event: eventResult,
+                    bookings: bookingResults,
+                    ticket: ticketResult,
+                    totalTickets: totalTickets
+                });
+            });
         });
+    });
+});
+
+/**
+ * POST /organiser/event/:id/save-complete
+ * Save Complete Event (Event Details + Ticket)
+ * Purpose: Save both event details and ticket in one operation.
+ * Inputs: Event ID from URL, form data (title, description, event_date, published, ticket_name, ticket_price, ticket_quantity)
+ * Outputs: Redirects to /organiser
+ */
+router.post('/event/:id/save-complete', [
+    expressValidator.body('title').trim().notEmpty().withMessage('Title is required.'),
+    expressValidator.body('description').trim().notEmpty().withMessage('Description is required.'),
+    expressValidator.body('event_date').trim().notEmpty().withMessage('Event date is required.'),
+    expressValidator.body('ticket_name').trim().notEmpty().withMessage('Ticket name is required.'),
+    expressValidator.body('ticket_price').isFloat({ min: 0 }).withMessage('Ticket price must be 0 or more.'),
+    expressValidator.body('ticket_quantity').isInt({ min: 1 }).withMessage('Ticket quantity must be at least 1.')
+], function(req, res) {
+    var errors = expressValidator.validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).send(errors.array().map(function(e) { return e.msg; }).join('<br>'));
+    }
+    
+    var eventId = req.params.id;
+    var title = req.body.title;
+    var description = req.body.description;
+    var event_date = req.body.event_date;
+    var published = req.body.published ? 1 : 0;
+    var ticket_name = req.body.ticket_name;
+    var ticket_price = req.body.ticket_price;
+    var ticket_quantity = req.body.ticket_quantity;
+    
+    // Start transaction
+    global.db.run('BEGIN TRANSACTION');
+    
+    // First check if event already has a ticket
+    global.db.get("SELECT ticket_id FROM events WHERE id = ?", [eventId], function(err, event) {
+        if (err) {
+            global.db.run('ROLLBACK');
+            console.error(err);
+            return res.status(500).send("Error checking event ticket.");
+        }
+        
+        if (!event) {
+            global.db.run('ROLLBACK');
+            return res.status(404).send("Event not found.");
+        }
+        
+        var ticketId;
+        
+        if (event.ticket_id) {
+            // Update existing ticket
+            var updateTicketSql = "UPDATE tickets SET name = ?, price = ?, quantity = ? WHERE id = ?";
+            global.db.run(updateTicketSql, [ticket_name, ticket_price, ticket_quantity, event.ticket_id], function(err) {
+                if (err) {
+                    global.db.run('ROLLBACK');
+                    console.error(err);
+                    return res.status(500).send("Error updating ticket.");
+                }
+                ticketId = event.ticket_id;
+                
+                // Update event
+                var eventSql = "UPDATE events SET title = ?, description = ?, event_date = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?";
+                global.db.run(eventSql, [title, description, event_date, published ? 'published' : 'draft', eventId], function(err) {
+                    if (err) {
+                        global.db.run('ROLLBACK');
+                        console.error(err);
+                        return res.status(500).send("Error updating event.");
+                    }
+                    
+                    global.db.run('COMMIT');
+                    res.redirect('/organiser');
+                });
+            });
+        } else {
+            // Create new ticket
+            var insertTicketSql = "INSERT INTO tickets (name, price, quantity) VALUES (?, ?, ?)";
+            global.db.run(insertTicketSql, [ticket_name, ticket_price, ticket_quantity], function(err) {
+                if (err) {
+                    global.db.run('ROLLBACK');
+                    console.error(err);
+                    return res.status(500).send("Error creating ticket.");
+                }
+                
+                ticketId = this.lastID;
+                
+                // Update event with ticket_id
+                var eventSql = "UPDATE events SET title = ?, description = ?, event_date = ?, status = ?, ticket_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?";
+                global.db.run(eventSql, [title, description, event_date, published ? 'published' : 'draft', ticketId, eventId], function(err) {
+                    if (err) {
+                        global.db.run('ROLLBACK');
+                        console.error(err);
+                        return res.status(500).send("Error updating event.");
+                    }
+                    
+                    global.db.run('COMMIT');
+                    res.redirect('/organiser');
+                });
+            });
+        }
+    });
+});
+
+/**
+ * POST /organiser/event/:id/save
+ * Save Event Details
+ * Purpose: Update an event's title, description, and date in the database.
+ * Inputs: Event ID from URL, form data (title, description, event_date, published)
+ * Outputs: Redirects to /organiser
+ */
+router.post('/event/:id/save', [
+    expressValidator.body('title').trim().notEmpty().withMessage('Title is required.'),
+    expressValidator.body('description').trim().notEmpty().withMessage('Description is required.'),
+    expressValidator.body('event_date').trim().notEmpty().withMessage('Event date is required.')
+], function(req, res) {
+    var errors = expressValidator.validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).send(errors.array().map(function(e) { return e.msg; }).join('<br>'));
+    }
+    var eventId = req.params.id;
+    var title = req.body.title;
+    var description = req.body.description;
+    var event_date = req.body.event_date;
+    var published = req.body.published ? 1 : 0;
+    
+    var sql = "UPDATE events SET title = ?, description = ?, event_date = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?";
+    global.db.run(sql, [title, description, event_date, published ? 'published' : 'draft', eventId], function(err) {
+        if (err) {
+            console.error(err);
+            return res.status(500).send("Error updating event.");
+        }
+        res.redirect('/organiser');
+    });
+});
+
+/**
+ * POST /organiser/event/:id/ticket
+ * Save Ticket Configuration
+ * Purpose: Create or update a ticket for an event.
+ * Inputs: Event ID from URL, form data (ticket_name, ticket_price, ticket_quantity)
+ * Outputs: Redirects to /organiser
+ */
+router.post('/event/:id/ticket', [
+    expressValidator.body('ticket_name').trim().notEmpty().withMessage('Ticket name is required.'),
+    expressValidator.body('ticket_price').isFloat({ min: 0 }).withMessage('Ticket price must be 0 or more.'),
+    expressValidator.body('ticket_quantity').isInt({ min: 1 }).withMessage('Ticket quantity must be at least 1.')
+], function(req, res) {
+    var errors = expressValidator.validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).send(errors.array().map(function(e) { return e.msg; }).join('<br>'));
+    }
+    
+    var eventId = req.params.id;
+    var ticket_name = req.body.ticket_name;
+    var ticket_price = req.body.ticket_price;
+    var ticket_quantity = req.body.ticket_quantity;
+    
+    // First check if event already has a ticket
+    global.db.get("SELECT ticket_id FROM events WHERE id = ?", [eventId], function(err, event) {
+        if (err) {
+            console.error(err);
+            return res.status(500).send("Error checking event ticket.");
+        }
+        
+        if (event.ticket_id) {
+            // Update existing ticket
+            var updateSql = "UPDATE tickets SET name = ?, price = ?, quantity = ? WHERE id = ?";
+            global.db.run(updateSql, [ticket_name, ticket_price, ticket_quantity, event.ticket_id], function(err) {
+                if (err) {
+                    console.error(err);
+                    return res.status(500).send("Error updating ticket.");
+                }
+                res.redirect('/organiser');
+            });
+        } else {
+            // Create new ticket
+            var insertSql = "INSERT INTO tickets (name, price, quantity) VALUES (?, ?, ?)";
+            global.db.run(insertSql, [ticket_name, ticket_price, ticket_quantity], function(err) {
+                if (err) {
+                    console.error(err);
+                    return res.status(500).send("Error creating ticket.");
+                }
+                
+                var ticketId = this.lastID;
+                
+                // Update event with ticket_id
+                var updateEventSql = "UPDATE events SET ticket_id = ? WHERE id = ?";
+                global.db.run(updateEventSql, [ticketId, eventId], function(err) {
+                    if (err) {
+                        console.error(err);
+                        return res.status(500).send("Error updating event with ticket.");
+                    }
+                    res.redirect('/organiser');
+                });
+            });
+        }
+    });
 });
 
 /**
@@ -160,17 +466,21 @@ router.get('/events/:id/edit', (req, res) => {
  * Inputs: Event ID from URL, form data (title, description, event_date)
  * Outputs: Redirects to /organiser
  */
-router.post('/events/:id', (req, res) => {
-    const eventId = req.params.id;
-    const { title, description, event_date } = req.body;
-
-    const sql = `
-        UPDATE events
-        SET title = ?, description = ?, event_date = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-    `;
-
-    global.db.run(sql, [title, description, event_date, eventId], (err) => {
+router.post('/events/:id', [
+    expressValidator.body('title').trim().notEmpty().withMessage('Title is required.'),
+    expressValidator.body('description').trim().notEmpty().withMessage('Description is required.'),
+    expressValidator.body('event_date').trim().notEmpty().withMessage('Event date is required.')
+], function(req, res) {
+    var errors = expressValidator.validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).send(errors.array().map(function(e) { return e.msg; }).join('<br>'));
+    }
+    var eventId = req.params.id;
+    var title = req.body.title;
+    var description = req.body.description;
+    var event_date = req.body.event_date;
+    var sql = "UPDATE events SET title = ?, description = ?, event_date = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?";
+    global.db.run(sql, [title, description, event_date, eventId], function(err) {
         if (err) {
             console.error(err);
             return res.status(500).send("Error updating event.");
@@ -187,12 +497,8 @@ router.post('/events/:id', (req, res) => {
  * Outputs: Redirects to /organiser
  */
 router.post('/events/:id/publish', (req, res) => {
-    const eventId = req.params.id;
-    const sql = `
-        UPDATE events
-        SET status = 'published', published_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-    `;
+    var eventId = req.params.id;
+    var sql = "UPDATE events SET status = 'published', published_at = CURRENT_TIMESTAMP WHERE id = ?";
     global.db.run(sql, [eventId], (err) => {
         if (err) {
             console.error(err);
@@ -210,8 +516,8 @@ router.post('/events/:id/publish', (req, res) => {
  * Outputs: Redirects to /organiser
  */
 router.post('/events/:id/delete', (req, res) => {
-    const eventId = req.params.id;
-    const sql = "DELETE FROM events WHERE id = ?";
+    var eventId = req.params.id;
+    var sql = "DELETE FROM events WHERE id = ?";
     global.db.run(sql, [eventId], (err) => {
         if (err) {
             console.error(err);
@@ -221,27 +527,7 @@ router.post('/events/:id/delete', (req, res) => {
     });
 });
 
-/**
- * POST /organiser/events/:id/tickets/add
- * Add a new ticket type to an event
- * Inputs: event id (URL), type_name, ticket_count, ticket_price (form)
- * Outputs: Redirects to the event edit page
- */
-router.post('/events/:id/tickets/add', (req, res) => {
-    const eventId = req.params.id;
-    const { type_name, ticket_count, ticket_price } = req.body;
-    if (!type_name || !ticket_count || !ticket_price) {
-        return res.status(400).send("All fields are required.");
-    }
-    const sql = `INSERT INTO ticket_types (event_id, type_name, ticket_count, ticket_price) VALUES (?, ?, ?, ?)`;
-    global.db.run(sql, [eventId, type_name, ticket_count, ticket_price], (err) => {
-        if (err) {
-            console.error(err);
-            return res.status(500).send("Error adding ticket type.");
-        }
-        res.redirect(`/organiser/events/${eventId}/edit`);
-    });
-});
+
 
 /**
  * POST /organiser/events/:id/tickets/:ticketId/edit
@@ -249,20 +535,27 @@ router.post('/events/:id/tickets/add', (req, res) => {
  * Inputs: event id, ticket id (URL), type_name, ticket_count, ticket_price (form)
  * Outputs: Redirects to the event edit page
  */
-router.post('/events/:id/tickets/:ticketId/edit', (req, res) => {
-    const eventId = req.params.id;
-    const ticketId = req.params.ticketId;
-    const { type_name, ticket_count, ticket_price } = req.body;
-    if (!type_name || !ticket_count || !ticket_price) {
-        return res.status(400).send("All fields are required.");
+router.post('/events/:id/tickets/:ticketId/edit', [
+    expressValidator.body('type_name').trim().notEmpty().withMessage('Type name is required.'),
+    expressValidator.body('ticket_count').isInt({ min: 1 }).withMessage('Ticket count must be at least 1.'),
+    expressValidator.body('ticket_price').isFloat({ min: 0 }).withMessage('Ticket price must be 0 or more.')
+], function(req, res) {
+    var errors = expressValidator.validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.status(400).send(errors.array().map(function(e) { return e.msg; }).join('<br>'));
     }
-    const sql = `UPDATE ticket_types SET type_name = ?, ticket_count = ?, ticket_price = ? WHERE id = ? AND event_id = ?`;
-    global.db.run(sql, [type_name, ticket_count, ticket_price, ticketId, eventId], (err) => {
+    var eventId = req.params.id;
+    var ticketId = req.params.ticketId;
+    var type_name = req.body.type_name;
+    var ticket_count = req.body.ticket_count;
+    var ticket_price = req.body.ticket_price;
+    var sql = "UPDATE ticket_types SET type_name = ?, ticket_count = ?, ticket_price = ? WHERE id = ? AND event_id = ?";
+    global.db.run(sql, [type_name, ticket_count, ticket_price, ticketId, eventId], function(err) {
         if (err) {
             console.error(err);
             return res.status(500).send("Error editing ticket type.");
         }
-        res.redirect(`/organiser/events/${eventId}/edit`);
+        res.redirect('/organiser/events/' + eventId + '/edit');
     });
 });
 
@@ -273,15 +566,15 @@ router.post('/events/:id/tickets/:ticketId/edit', (req, res) => {
  * Outputs: Redirects to the event edit page
  */
 router.post('/events/:id/tickets/:ticketId/delete', (req, res) => {
-    const eventId = req.params.id;
-    const ticketId = req.params.ticketId;
-    const sql = `DELETE FROM ticket_types WHERE id = ? AND event_id = ?`;
+    var eventId = req.params.id;
+    var ticketId = req.params.ticketId;
+    var sql = "DELETE FROM ticket_types WHERE id = ? AND event_id = ?";
     global.db.run(sql, [ticketId, eventId], (err) => {
         if (err) {
             console.error(err);
             return res.status(500).send("Error deleting ticket type.");
         }
-        res.redirect(`/organiser/events/${eventId}/edit`);
+        res.redirect('/organiser/events/' + eventId + '/edit');
     });
 });
 
