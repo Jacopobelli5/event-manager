@@ -49,7 +49,7 @@
                                 <h5 class="text-primary"><%= ticket.name %></h5>
                                 <p class="card-text">
                                     <strong>Price:</strong> $<%= ticket.price %><br>
-                                    <strong>Available:</strong> <span class="badge bg-success"><%= ticket.quantity %></span>
+                                    <strong>Available:</strong> <span class="badge bg-success"><%= ticket.remaining %></span>
                                 </p>
                                 <p class="card-text"><small class="text-muted"><%= ticket.description %></small></p>
                             </div>
@@ -65,7 +65,7 @@
         </div>
 
         <!-- Booking Form -->
-        <% if (ticket && ticket.quantity > 0) { %>
+        <% if (ticket && ticket.remaining > 0) { %>
             <div class="row">
                 <div class="col-md-8">
                     <div class="card">
@@ -83,10 +83,11 @@
                                     <input type="email" class="form-control" id="email" name="email" required>
                                 </div>
                                 <!-- Help needed to make this work -->
+                                <!-- Loop to create ticket quantity options with calculated prices -->
                                 <div class="mb-3">
                                     <label for="quantity" class="form-label">Number of Tickets</label>
                                     <select class="form-select" id="quantity" name="quantity" required>
-                                        <% for (let i = 1; i <= Math.min(ticket.quantity, 10); i++) { %>
+                                        <% for (let i = 1; i <= Math.min(ticket.remaining, 10); i++) { %>
                                             <option value="<%= i %>"><%= i %> ticket<%= i > 1 ? 's' : '' %> - $<%= (ticket.price * i).toFixed(2) %></option>
                                         <% } %>
                                     </select>

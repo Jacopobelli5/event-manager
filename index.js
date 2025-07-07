@@ -40,6 +40,6 @@ app.use('/attendee', attendeeRoutes);
 
 // Make the web application listen for HTTP requests
 app.listen(port, () => {
-    console.log(`Example app listening on port ${port}`)
+    console.log(`app listening on port ${port}`)
 })
 

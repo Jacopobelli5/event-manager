@@ -9,7 +9,9 @@ const expressValidator = require('express-validator');
  * Shows the main page for attendees with all published events
  */
 router.get('/', function(req, res) {
-    global.db.get("SELECT * FROM site_settings WHERE id = 1", function(err, result) {
+    // Get site settings
+    let sqlquery = "SELECT * FROM site_settings WHERE id = 1";
+    global.db.get(sqlquery, function(err, result) {
         if (err) {
             console.error(err);
             return res.status(500).send("Error fetching site settings.");
@@ -18,7 +20,10 @@ router.get('/', function(req, res) {
         if (!result) {
             result = { name: 'Event Manager', description: 'Welcome!' };
         }
-        global.db.all("SELECT * FROM events WHERE status = 'published' ORDER BY event_date ASC", function(err, results) {
+        
+        // Get all published events
+        let eventsQuery = "SELECT * FROM events WHERE status = 'published' ORDER BY event_date ASC";
+        global.db.all(eventsQuery, function(err, results) {
             if (err) {
                 console.error(err);
                 return res.status(500).send("Error fetching events.");
@@ -36,9 +41,10 @@ router.get('/', function(req, res) {
  * Shows a specific event page with booking form
  */
 router.get('/event/:id', function(req, res) {
-    // help needed here - Nested queries and ticket availability calculation
+    // Get the event
     var eventId = req.params.id;
-    global.db.get("SELECT * FROM events WHERE id = ? AND status = 'published'", [eventId], function(err, result) {
+    let eventQuery = "SELECT * FROM events WHERE id = ? AND status = 'published'";
+    global.db.get(eventQuery, [eventId], function(err, result) {
         if (err) {
             console.error(err);
             return res.status(500).send("Error fetching event.");
@@ -46,12 +52,15 @@ router.get('/event/:id', function(req, res) {
         if (!result) {
             return res.status(404).send("Event not found or not published.");
         }
-        // Handle events without tickets, render page without ticket info
+        
+        // Handle events without tickets - render page without ticket info
         if (!result.ticket_id) {
             return res.render('attendee-event-page', { event: result, ticket: null, request: req });
         }
         
-        global.db.get("SELECT * FROM tickets WHERE id = ?", [result.ticket_id], function(err, ticket) {
+        // Get the ticket for this event
+        let ticketQuery = "SELECT * FROM tickets WHERE id = ?";
+        global.db.get(ticketQuery, [result.ticket_id], function(err, ticket) {
             if (err) {
                 console.error(err);
                 return res.status(500).send("Error fetching ticket.");
@@ -62,20 +71,21 @@ router.get('/event/:id', function(req, res) {
             }
             
             // Calculate remaining tickets by subtracting booked from total
-                global.db.get("SELECT SUM(quantity) as booked FROM booking_tickets WHERE ticket_id = ?", [ticket.id], function(err, bookedResult) {
-                    if (err) {
-                        console.error(err);
-                        return res.status(500).send("Error fetching booked tickets.");
-                    }
-                    // Convert booked count to number, default to 0 if null
-                    var booked = parseInt(bookedResult.booked || 0, 10);
-                    ticket.remaining = ticket.quantity - booked;
-                    
-                    res.render('attendee-event-page', { event: result, ticket: ticket, request: req });
-                });
+            let bookedQuery = "SELECT SUM(quantity) as booked FROM booking_tickets WHERE ticket_id = ?";
+            global.db.get(bookedQuery, [ticket.id], function(err, bookedResult) {
+                if (err) {
+                    console.error(err);
+                    return res.status(500).send("Error fetching booked tickets.");
+                }
+                // Convert booked count to number, default to 0 if null
+                var booked = parseInt(bookedResult.booked || 0, 10);
+                // Calculate remaining tickets for display
+                ticket.remaining = ticket.quantity - booked;
+                
+                res.render('attendee-event-page', { event: result, ticket: ticket, request: req });
+            });
         });
     });
-    // help ended
 });
 
 /**
@@ -100,7 +110,9 @@ router.post('/book/:id', [
     var quantity = parseInt(req.body.quantity, 10);
     
     // Multi step booking process to get event, then ticket, then check availability
-    global.db.get("SELECT * FROM events WHERE id = ? AND status = 'published'", [eventId], function(err, event) {
+    // Get the event first
+    let eventQuery = "SELECT * FROM events WHERE id = ? AND status = 'published'";
+    global.db.get(eventQuery, [eventId], function(err, event) {
         if (err) {
             console.error(err);
             return res.status(500).send("Error fetching event.");
@@ -114,7 +126,8 @@ router.post('/book/:id', [
         }
         
         // Fetch ticket details for availability check
-        global.db.get("SELECT * FROM tickets WHERE id = ?", [event.ticket_id], function(err, ticket) {
+        let ticketQuery = "SELECT * FROM tickets WHERE id = ?";
+        global.db.get(ticketQuery, [event.ticket_id], function(err, ticket) {
             if (err) {
                 console.error(err);
                 return res.status(500).send("Error fetching ticket.");
@@ -124,12 +137,13 @@ router.post('/book/:id', [
             }
             
             // Check how many tickets are already booked
-            global.db.get("SELECT SUM(quantity) as booked FROM booking_tickets WHERE ticket_id = ?", [ticket.id], function(err, bookedResult) {
+            let bookedQuery = "SELECT SUM(quantity) as booked FROM booking_tickets WHERE ticket_id = ?";
+            global.db.get(bookedQuery, [ticket.id], function(err, bookedResult) {
                 if (err) {
                     console.error(err);
                     return res.status(500).send("Error checking ticket availability.");
                 }
-                
+
                 // Calculate available tickets and validate request quantity and prevent overbooking by checking availability
                 var booked = parseInt(bookedResult.booked || 0, 10);
                 var available = ticket.quantity - booked;
@@ -139,7 +153,8 @@ router.post('/book/:id', [
                 }
                 
                 // Create the booking
-                global.db.run("INSERT INTO bookings (event_id, attendee_name) VALUES (?, ?)", [eventId, attendeeName], function(err) {
+                let bookingQuery = "INSERT INTO bookings (event_id, attendee_name) VALUES (?, ?)";
+                global.db.run(bookingQuery, [eventId, attendeeName], function(err) {
                     if (err) {
                         console.error(err);
                         return res.status(500).send("Error creating booking.");
@@ -149,7 +164,8 @@ router.post('/book/:id', [
                     var bookingId = this.lastID;
                     
                     // Create the booking_tickets record
-                    global.db.run("INSERT INTO booking_tickets (booking_id, ticket_id, quantity) VALUES (?, ?, ?)", [bookingId, ticket.id, quantity], function(err) {
+                    let ticketBookingQuery = "INSERT INTO booking_tickets (booking_id, ticket_id, quantity) VALUES (?, ?, ?)";
+                    global.db.run(ticketBookingQuery, [bookingId, ticket.id, quantity], function(err) {
                         if (err) {
                             console.error(err);
                             return res.status(500).send("Error saving ticket booking.");

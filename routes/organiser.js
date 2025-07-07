@@ -9,8 +9,9 @@ GET /organiser
 Shows the main dashboard for organisers with all their events
 */
 router.get('/', (req, res) => {
-    // Help needed here - Complex nested queries and data aggregation
-    global.db.get("SELECT * FROM site_settings WHERE id = 1", (err, result) => {
+    // Get site settings
+    let sqlquery = "SELECT * FROM site_settings WHERE id = 1";
+    global.db.get(sqlquery, (err, result) => {
         if (err) {
             console.error(err);
             return res.status(500).send("Error fetching site settings.");
@@ -19,19 +20,26 @@ router.get('/', (req, res) => {
         if (!result) {
             result = { name: 'Event Manager', description: 'Your events, organised.' };
         }
-        global.db.all("SELECT * FROM events WHERE status = 'published' ORDER BY event_date DESC", (err, publishedResults) => {
+        
+        // Get all published events
+        let publishedQuery = "SELECT * FROM events WHERE status = 'published' ORDER BY event_date DESC";
+        global.db.all(publishedQuery, (err, publishedResults) => {
             if (err) {
                 console.error(err);
                 return res.status(500).send("Error fetching published events.");
             }
-            global.db.all("SELECT * FROM events WHERE status = 'draft' ORDER BY created_at DESC", (err, draftResults) => {
+            
+            // Get all draft events
+            let draftQuery = "SELECT * FROM events WHERE status = 'draft' ORDER BY created_at DESC";
+            global.db.all(draftQuery, (err, draftResults) => {
                 if (err) {
                     console.error(err);
                     return res.status(500).send("Error fetching draft events.");
                 }
-                // Fetch all tickets for all events
-                var allEventIds = publishedResults.map(e => e.id).concat(draftResults.map(e => e.id));
-                if (allEventIds.length === 0) {
+                
+                // Check if we have any events
+                if (publishedResults.length === 0 && draftResults.length === 0) {
+                    // No events exist - render empty dashboard
                     return res.render('organiser-home', {
                         site: result,
                         publishedEvents: publishedResults,
@@ -40,23 +48,27 @@ router.get('/', (req, res) => {
                 }
                 
                 // Get all ticket IDs from events
-                var allTicketIds = [];
-                publishedResults.forEach(event => {
-                    if (event.ticket_id) allTicketIds.push(event.ticket_id);
-                });
-                draftResults.forEach(event => {
-                    if (event.ticket_id) allTicketIds.push(event.ticket_id);
-                });
-                
-                // Handle case where no events have tickets - set all tickets to null
-                if (allTicketIds.length === 0) {
-                    function attachTickets(events) {
-                        events.forEach(event => {
-                            event.ticket = null;
-                        });
+                let allTicketIds = [];
+                for (let i = 0; i < publishedResults.length; i++) {
+                    if (publishedResults[i].ticket_id) {
+                        allTicketIds.push(publishedResults[i].ticket_id);
                     }
-                    attachTickets(publishedResults);
-                    attachTickets(draftResults);
+                }
+                for (let i = 0; i < draftResults.length; i++) {
+                    if (draftResults[i].ticket_id) {
+                        allTicketIds.push(draftResults[i].ticket_id);
+                    }
+                }
+                
+                // If no tickets, just render without ticket data
+                if (allTicketIds.length === 0) {
+                    // Set all tickets to null
+                    for (let i = 0; i < publishedResults.length; i++) {
+                        publishedResults[i].ticket = null;
+                    }
+                    for (let i = 0; i < draftResults.length; i++) {
+                        draftResults[i].ticket = null;
+                    }
                     return res.render('organiser-home', {
                         site: result,
                         publishedEvents: publishedResults,
@@ -64,42 +76,71 @@ router.get('/', (req, res) => {
                     });
                 }
                 
-                var ticketPlaceholders = allTicketIds.map(() => '?').join(',');
-                global.db.all("SELECT * FROM tickets WHERE id IN (" + ticketPlaceholders + ")", allTicketIds, (err, ticketResults) => {
+                // Get all ticket details
+                let ticketPlaceholders = '';
+                for (let i = 0; i < allTicketIds.length; i++) {
+                    if (i > 0) ticketPlaceholders += ',';
+                    ticketPlaceholders += '?';
+                }
+                
+                let ticketQuery = "SELECT * FROM tickets WHERE id IN (" + ticketPlaceholders + ")";
+                global.db.all(ticketQuery, allTicketIds, (err, ticketResults) => {
                     if (err) {
                         console.error(err);
                         return res.status(500).send("Error fetching tickets.");
                     }
                     
-                    // Fetch booked quantities for all tickets
-                    global.db.all("SELECT ticket_id, SUM(quantity) as booked FROM booking_tickets WHERE ticket_id IN (" + ticketPlaceholders + ") GROUP BY ticket_id", allTicketIds, (err, bookedResults) => {
+                    // Get booking counts for each ticket
+                    let bookedQuery = "SELECT ticket_id, SUM(quantity) as booked FROM booking_tickets WHERE ticket_id IN (" + ticketPlaceholders + ") GROUP BY ticket_id";
+                    global.db.all(bookedQuery, allTicketIds, (err, bookedResults) => {
                         if (err) {
                             console.error(err);
                             return res.status(500).send("Error fetching booked ticket counts.");
                         }
-                        // Create a map for quick lookup of booked quantities by ticket ID
-                        var bookedMap = {};
-                        bookedResults.forEach(row => {
-                            bookedMap[row.ticket_id] = row.booked || 0;
-                        });
                         
-                        // Attach tickets and remaining to each event
-                        function attachTickets(events) {
-                            events.forEach(event => {
-                                if (event.ticket_id) {
-                                    event.ticket = ticketResults.find(t => t.id === event.ticket_id);
-                                    if (event.ticket) {
-                                        // Calculate remaining tickets by subtracting booked from total
-                                        var booked = parseInt(bookedMap[event.ticket_id] || 0, 10);
-                                        event.ticket.remaining = event.ticket.quantity - booked;
-                                    }
-                                } else {
-                                    event.ticket = null;
-                                }
-                            });
+                        // Create a simple map for booked quantities
+                        let bookedMap = {};
+                        for (let i = 0; i < bookedResults.length; i++) {
+                            bookedMap[bookedResults[i].ticket_id] = bookedResults[i].booked || 0;
                         }
-                        attachTickets(publishedResults);
-                        attachTickets(draftResults);
+                        
+                        // Attach tickets to published events
+                        for (let i = 0; i < publishedResults.length; i++) {
+                            if (publishedResults[i].ticket_id) {
+                                // Find the ticket for this event
+                                for (let j = 0; j < ticketResults.length; j++) {
+                                    if (ticketResults[j].id === publishedResults[i].ticket_id) {
+                                        publishedResults[i].ticket = ticketResults[j];
+                                        // Calculate remaining tickets
+                                        let booked = parseInt(bookedMap[publishedResults[i].ticket_id] || 0, 10);
+                                        publishedResults[i].ticket.remaining = publishedResults[i].ticket.quantity - booked;
+                                        break;
+                                    }
+                                }
+                            } else {
+                                publishedResults[i].ticket = null;
+                            }
+                        }
+                        
+                        // Attach tickets to draft events
+                        for (let i = 0; i < draftResults.length; i++) {
+                            if (draftResults[i].ticket_id) {
+                                // Find the ticket for this event
+                                for (let j = 0; j < ticketResults.length; j++) {
+                                    if (ticketResults[j].id === draftResults[i].ticket_id) {
+                                        draftResults[i].ticket = ticketResults[j];
+                                        // Calculate remaining tickets
+                                        let booked = parseInt(bookedMap[draftResults[i].ticket_id] || 0, 10);
+                                        draftResults[i].ticket.remaining = draftResults[i].ticket.quantity - booked;
+                                        break;
+                                    }
+                                }
+                            } else {
+                                draftResults[i].ticket = null;
+                            }
+                        }
+                        
+                        // Render the dashboard
                         res.render('organiser-home', {
                             site: result,
                             publishedEvents: publishedResults,
@@ -110,7 +151,6 @@ router.get('/', (req, res) => {
             });
         });
     });
-    // help ended
 });
 
 /**
@@ -118,7 +158,8 @@ GET /organiser/settings
 Shows the site settings page where organisers can change the site name and description
 */
 router.get('/settings', (req, res) => {
-    global.db.get("SELECT * FROM site_settings WHERE id = 1", (err, result) => {
+    let sqlquery = "SELECT * FROM site_settings WHERE id = 1";
+    global.db.get(sqlquery, (err, result) => {
         if (err) {
             console.error(err);
             return res.status(500).send("Error fetching site settings.");
@@ -163,8 +204,8 @@ POST /organiser/events/new
 Creates a new draft event and takes you to edit it
 */
 router.post('/events/new', (req, res) => {
-    var sql = "INSERT INTO events (title, description, event_date, status) VALUES ('New Event Title', 'Event Description', DATETIME('now'), 'draft')";
-    global.db.run(sql, function(err) {
+    let sqlquery = "INSERT INTO events (title, description, event_date, status) VALUES ('New Event Title', 'Event Description', DATETIME('now'), 'draft')";
+    global.db.run(sqlquery, function(err) {
         if (err) {
             console.error(err);
             return res.status(500).send("Error creating new event.");
@@ -179,7 +220,8 @@ Shows the edit page for a specific event
 */
 router.get('/events/:id/edit', (req, res) => {
     var eventId = req.params.id;
-    global.db.get("SELECT * FROM events WHERE id = ?", [eventId], (err, result) => {
+    let sqlquery = "SELECT * FROM events WHERE id = ?";
+    global.db.get(sqlquery, [eventId], (err, result) => {
         if (err) {
             console.error(err);
             return res.status(500).send("Error fetching event.");
@@ -190,7 +232,8 @@ router.get('/events/:id/edit', (req, res) => {
         
         // If event has a ticket_id, fetch the ticket
         if (result.ticket_id) {
-            global.db.get("SELECT * FROM tickets WHERE id = ?", [result.ticket_id], (err, ticketResult) => {
+            let ticketQuery = "SELECT * FROM tickets WHERE id = ?";
+            global.db.get(ticketQuery, [result.ticket_id], (err, ticketResult) => {
                 if (err) {
                     console.error(err);
                     return res.status(500).send("Error fetching ticket.");
@@ -209,11 +252,10 @@ GET /organiser/events/:id/bookings
 Shows all the bookings for a specific event
 */
 router.get('/events/:id/bookings', function(req, res) {
-    // help needed here - Complex JOIN queries and data aggregation
-    var eventId = req.params.id;
-
     // Get the event
-    global.db.get("SELECT * FROM events WHERE id = ?", [eventId], function(err, eventResult) {
+    var eventId = req.params.id;
+    let eventQuery = "SELECT * FROM events WHERE id = ?";
+    global.db.get(eventQuery, [eventId], function(err, eventResult) {
         if (err) {
             console.error(err);
             return res.status(500).send("Error fetching event.");
@@ -223,14 +265,16 @@ router.get('/events/:id/bookings', function(req, res) {
         }
 
         // Get all bookings for the event with ticket information
-        global.db.all("SELECT b.*, bt.quantity, t.price as ticket_price FROM bookings b JOIN booking_tickets bt ON b.id = bt.booking_id JOIN tickets t ON bt.ticket_id = t.id WHERE b.event_id = ? ORDER BY b.created_at DESC", [eventId], function(err, bookingResults) {
+        let bookingQuery = "SELECT b.*, bt.quantity, t.price as ticket_price FROM bookings b JOIN booking_tickets bt ON b.id = bt.booking_id JOIN tickets t ON bt.ticket_id = t.id WHERE b.event_id = ? ORDER BY b.created_at DESC";
+        global.db.all(bookingQuery, [eventId], function(err, bookingResults) {
             if (err) {
                 console.error(err);
                 return res.status(500).send("Error fetching bookings.");
             }
 
             // Get the ticket for the event
-            global.db.get("SELECT * FROM tickets WHERE id = ?", [eventResult.ticket_id], function(err, ticketResult) {
+            let ticketQuery = "SELECT * FROM tickets WHERE id = ?";
+            global.db.get(ticketQuery, [eventResult.ticket_id], function(err, ticketResult) {
                 if (err) {
                     console.error(err);
                     return res.status(500).send("Error fetching ticket.");
@@ -252,7 +296,6 @@ router.get('/events/:id/bookings', function(req, res) {
             });
         });
     });
-    // help ended
 });
 
 /**
@@ -276,7 +319,6 @@ router.post('/event/:id/save-complete', [
     var title = req.body.title;
     var description = req.body.description;
     var event_date = req.body.event_date;
-    // Convert checkbox value to boolean (1 for checked, 0 for unchecked)
     var published = req.body.published ? 1 : 0;
     var ticket_name = req.body.ticket_name;
     var ticket_price = req.body.ticket_price;
@@ -286,14 +328,14 @@ router.post('/event/:id/save-complete', [
     global.db.run('BEGIN TRANSACTION');
     
     // First check if event already has a ticket
-    global.db.get("SELECT ticket_id FROM events WHERE id = ?", [eventId], function(err, event) {
+    let checkQuery = "SELECT ticket_id FROM events WHERE id = ?";
+    global.db.get(checkQuery, [eventId], function(err, event) {
         if (err) {
             global.db.run('ROLLBACK');
             console.error(err);
             return res.status(500).send("Error checking event ticket.");
         }
         
-        // Ensure event exists before proceeding with updates
         if (!event) {
             global.db.run('ROLLBACK');
             return res.status(404).send("Event not found.");
@@ -301,22 +343,20 @@ router.post('/event/:id/save-complete', [
         
         var ticketId;
         
-        // Handle existing ticket - update it
         if (event.ticket_id) {
             // Update existing ticket
-            var updateTicketSql = "UPDATE tickets SET name = ?, price = ?, quantity = ? WHERE id = ?";
-            global.db.run(updateTicketSql, [ticket_name, ticket_price, ticket_quantity, event.ticket_id], function(err) {
+            let updateTicketQuery = "UPDATE tickets SET name = ?, price = ?, quantity = ? WHERE id = ?";
+            global.db.run(updateTicketQuery, [ticket_name, ticket_price, ticket_quantity, event.ticket_id], function(err) {
                 if (err) {
                     global.db.run('ROLLBACK');
                     console.error(err);
                     return res.status(500).send("Error updating ticket.");
                 }
-                // Use existing ticket ID for event update
                 ticketId = event.ticket_id;
                 
                 // Update event
-                var eventSql = "UPDATE events SET title = ?, description = ?, event_date = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?";
-                global.db.run(eventSql, [title, description, event_date, published ? 'published' : 'draft', eventId], function(err) {
+                let eventQuery = "UPDATE events SET title = ?, description = ?, event_date = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?";
+                global.db.run(eventQuery, [title, description, event_date, published ? 'published' : 'draft', eventId], function(err) {
                     if (err) {
                         global.db.run('ROLLBACK');
                         console.error(err);
@@ -329,20 +369,19 @@ router.post('/event/:id/save-complete', [
             });
         } else {
             // Create new ticket
-            var insertTicketSql = "INSERT INTO tickets (name, price, quantity) VALUES (?, ?, ?)";
-            global.db.run(insertTicketSql, [ticket_name, ticket_price, ticket_quantity], function(err) {
+            let insertTicketQuery = "INSERT INTO tickets (name, price, quantity) VALUES (?, ?, ?)";
+            global.db.run(insertTicketQuery, [ticket_name, ticket_price, ticket_quantity], function(err) {
                 if (err) {
                     global.db.run('ROLLBACK');
                     console.error(err);
                     return res.status(500).send("Error creating ticket.");
                 }
                 
-                // Get the new ticket ID for linking to event
                 ticketId = this.lastID;
                 
                 // Update event with ticket_id
-                var eventSql = "UPDATE events SET title = ?, description = ?, event_date = ?, status = ?, ticket_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?";
-                global.db.run(eventSql, [title, description, event_date, published ? 'published' : 'draft', ticketId, eventId], function(err) {
+                let eventQuery = "UPDATE events SET title = ?, description = ?, event_date = ?, status = ?, ticket_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?";
+                global.db.run(eventQuery, [title, description, event_date, published ? 'published' : 'draft', ticketId, eventId], function(err) {
                     if (err) {
                         global.db.run('ROLLBACK');
                         console.error(err);
@@ -374,11 +413,10 @@ router.post('/event/:id/save', [
     var title = req.body.title;
     var description = req.body.description;
     var event_date = req.body.event_date;
-    // Convert checkbox value to boolean (1 for checked, 0 for unchecked)
     var published = req.body.published ? 1 : 0;
     
-    var sql = "UPDATE events SET title = ?, description = ?, event_date = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?";
-    global.db.run(sql, [title, description, event_date, published ? 'published' : 'draft', eventId], function(err) {
+    let sqlquery = "UPDATE events SET title = ?, description = ?, event_date = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?";
+    global.db.run(sqlquery, [title, description, event_date, published ? 'published' : 'draft', eventId], function(err) {
         if (err) {
             console.error(err);
             return res.status(500).send("Error updating event.");
@@ -407,17 +445,17 @@ router.post('/event/:id/ticket', [
     var ticket_quantity = req.body.ticket_quantity;
     
     // First check if event already has a ticket
-    global.db.get("SELECT ticket_id FROM events WHERE id = ?", [eventId], function(err, event) {
+    let checkQuery = "SELECT ticket_id FROM events WHERE id = ?";
+    global.db.get(checkQuery, [eventId], function(err, event) {
         if (err) {
             console.error(err);
             return res.status(500).send("Error checking event ticket.");
         }
         
-        // Handle existing ticket - update it
         if (event.ticket_id) {
             // Update existing ticket
-            var updateSql = "UPDATE tickets SET name = ?, price = ?, quantity = ? WHERE id = ?";
-            global.db.run(updateSql, [ticket_name, ticket_price, ticket_quantity, event.ticket_id], function(err) {
+            let updateQuery = "UPDATE tickets SET name = ?, price = ?, quantity = ? WHERE id = ?";
+            global.db.run(updateQuery, [ticket_name, ticket_price, ticket_quantity, event.ticket_id], function(err) {
                 if (err) {
                     console.error(err);
                     return res.status(500).send("Error updating ticket.");
@@ -426,19 +464,18 @@ router.post('/event/:id/ticket', [
             });
         } else {
             // Create new ticket
-            var insertSql = "INSERT INTO tickets (name, price, quantity) VALUES (?, ?, ?)";
-            global.db.run(insertSql, [ticket_name, ticket_price, ticket_quantity], function(err) {
+            let insertQuery = "INSERT INTO tickets (name, price, quantity) VALUES (?, ?, ?)";
+            global.db.run(insertQuery, [ticket_name, ticket_price, ticket_quantity], function(err) {
                 if (err) {
                     console.error(err);
                     return res.status(500).send("Error creating ticket.");
                 }
                 
-                // Get the new ticket ID for linking to event
                 var ticketId = this.lastID;
                 
                 // Update event with ticket_id
-                var updateEventSql = "UPDATE events SET ticket_id = ? WHERE id = ?";
-                global.db.run(updateEventSql, [ticketId, eventId], function(err) {
+                let updateEventQuery = "UPDATE events SET ticket_id = ? WHERE id = ?";
+                global.db.run(updateEventQuery, [ticketId, eventId], function(err) {
                     if (err) {
                         console.error(err);
                         return res.status(500).send("Error updating event with ticket.");
@@ -467,8 +504,8 @@ router.post('/events/:id', [
     var title = req.body.title;
     var description = req.body.description;
     var event_date = req.body.event_date;
-    var sql = "UPDATE events SET title = ?, description = ?, event_date = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?";
-    global.db.run(sql, [title, description, event_date, eventId], function(err) {
+    let sqlquery = "UPDATE events SET title = ?, description = ?, event_date = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?";
+    global.db.run(sqlquery, [title, description, event_date, eventId], function(err) {
         if (err) {
             console.error(err);
             return res.status(500).send("Error updating event.");
@@ -483,8 +520,8 @@ Makes a draft event visible to attendees
 */
 router.post('/events/:id/publish', (req, res) => {
     var eventId = req.params.id;
-    var sql = "UPDATE events SET status = 'published', published_at = CURRENT_TIMESTAMP WHERE id = ?";
-    global.db.run(sql, [eventId], (err) => {
+    let sqlquery = "UPDATE events SET status = 'published', published_at = CURRENT_TIMESTAMP WHERE id = ?";
+    global.db.run(sqlquery, [eventId], (err) => {
         if (err) {
             console.error(err);
             return res.status(500).send("Error publishing event.");
@@ -499,8 +536,8 @@ Removes an event from the system
 */
 router.post('/events/:id/delete', (req, res) => {
     var eventId = req.params.id;
-    var sql = "DELETE FROM events WHERE id = ?";
-    global.db.run(sql, [eventId], (err) => {
+    let sqlquery = "DELETE FROM events WHERE id = ?";
+    global.db.run(sqlquery, [eventId], (err) => {
         if (err) {
             console.error(err);
             return res.status(500).send("Error deleting event.");
@@ -527,8 +564,8 @@ router.post('/events/:id/tickets/:ticketId/edit', [
     var type_name = req.body.type_name;
     var ticket_count = req.body.ticket_count;
     var ticket_price = req.body.ticket_price;
-    var sql = "UPDATE ticket_types SET type_name = ?, ticket_count = ?, ticket_price = ? WHERE id = ? AND event_id = ?";
-    global.db.run(sql, [type_name, ticket_count, ticket_price, ticketId, eventId], function(err) {
+    let sqlquery = "UPDATE ticket_types SET type_name = ?, ticket_count = ?, ticket_price = ? WHERE id = ? AND event_id = ?";
+    global.db.run(sqlquery, [type_name, ticket_count, ticket_price, ticketId, eventId], function(err) {
         if (err) {
             console.error(err);
             return res.status(500).send("Error editing ticket type.");
@@ -544,8 +581,8 @@ Removes a ticket from an event
 router.post('/events/:id/tickets/:ticketId/delete', (req, res) => {
     var eventId = req.params.id;
     var ticketId = req.params.ticketId;
-    var sql = "DELETE FROM ticket_types WHERE id = ? AND event_id = ?";
-    global.db.run(sql, [ticketId, eventId], (err) => {
+    let sqlquery = "DELETE FROM ticket_types WHERE id = ? AND event_id = ?";
+    global.db.run(sqlquery, [ticketId, eventId], (err) => {
         if (err) {
             console.error(err);
             return res.status(500).send("Error deleting ticket type.");
