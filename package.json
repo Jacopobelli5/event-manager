@@ -10,7 +10,7 @@
     "build-db-win": "sqlite3 database.db < db_schema.sql",
     "clean-db-win": "del database.db",
     "postinstall": "npm run clean-db && npm run build-db",
-    "start": "node index.js"
+    "start": "node api/index.js"
   },
   "author": "Simon Katan",
   "license": "ISC",
